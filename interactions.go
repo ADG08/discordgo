@@ -331,6 +331,28 @@ func (i Interaction) ModalSubmitData() (data ModalSubmitInteractionData) {
 	return i.Data.(ModalSubmitInteractionData)
 }
 
+// findSelectMenuInComponents recursively searches a component slice for a SelectMenu
+// with the given customID, looking inside ActionsRow and Label wrappers.
+func findSelectMenuInComponents(components []MessageComponent, customID string) *SelectMenu {
+	for _, comp := range components {
+		switch c := comp.(type) {
+		case *ActionsRow:
+			if sel := findSelectMenuInComponents(c.Components, customID); sel != nil {
+				return sel
+			}
+		case *Label:
+			if sel, ok := c.Component.(*SelectMenu); ok && sel.CustomID == customID {
+				return sel
+			}
+		case *SelectMenu:
+			if c.CustomID == customID {
+				return c
+			}
+		}
+	}
+	return nil
+}
+
 // InteractionData is a common interface for all types of interaction data.
 type InteractionData interface {
 	Type() InteractionType
@@ -385,7 +407,7 @@ type MessageComponentInteractionData struct {
 	ComponentType ComponentType                    `json:"component_type"`
 	Resolved      ComponentInteractionDataResolved `json:"resolved"`
 
-	// NOTE: Only filled when ComponentType is SelectMenuComponent (3). Otherwise is nil.
+	// NOTE: Only filled when ComponentType is a select menu (string, user, role, channel or mentionable select). Otherwise is nil.
 	Values []string `json:"values"`
 }
 
@@ -413,6 +435,38 @@ type ModalSubmitInteractionData struct {
 // Type returns the type of interaction data.
 func (ModalSubmitInteractionData) Type() InteractionType {
 	return InteractionModalSubmit
+}
+
+// GetSelectMenu searches the modal's component tree for a SelectMenu with the given
+// custom ID. It looks inside ActionsRow and Label wrappers. Returns nil if not found.
+// Use this to retrieve selected values and resolved data from role/channel/user selects
+// embedded in a modal submit payload.
+func (d ModalSubmitInteractionData) GetSelectMenu(customID string) *SelectMenu {
+	return findSelectMenuInComponents(d.Components, customID)
+}
+
+// GetTextInput searches the modal's component tree for a TextInput with the given
+// custom ID. It looks inside ActionsRow and Label wrappers. Returns nil if not found.
+func (d ModalSubmitInteractionData) GetTextInput(customID string) *TextInput {
+	for _, comp := range d.Components {
+		switch c := comp.(type) {
+		case *ActionsRow:
+			for _, inner := range c.Components {
+				if ti, ok := inner.(*TextInput); ok && ti.CustomID == customID {
+					return ti
+				}
+			}
+		case *Label:
+			if ti, ok := c.Component.(*TextInput); ok && ti.CustomID == customID {
+				return ti
+			}
+		case *TextInput:
+			if c.CustomID == customID {
+				return c
+			}
+		}
+	}
+	return nil
 }
 
 // UnmarshalJSON is a helper function to correctly unmarshal Components.

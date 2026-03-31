@@ -331,28 +331,6 @@ func (i Interaction) ModalSubmitData() (data ModalSubmitInteractionData) {
 	return i.Data.(ModalSubmitInteractionData)
 }
 
-// findSelectMenuInComponents recursively searches a component slice for a SelectMenu
-// with the given customID, looking inside ActionsRow and Label wrappers.
-func findSelectMenuInComponents(components []MessageComponent, customID string) *SelectMenu {
-	for _, comp := range components {
-		switch c := comp.(type) {
-		case *ActionsRow:
-			if sel := findSelectMenuInComponents(c.Components, customID); sel != nil {
-				return sel
-			}
-		case *Label:
-			if sel, ok := c.Component.(*SelectMenu); ok && sel.CustomID == customID {
-				return sel
-			}
-		case *SelectMenu:
-			if c.CustomID == customID {
-				return c
-			}
-		}
-	}
-	return nil
-}
-
 // InteractionData is a common interface for all types of interaction data.
 type InteractionData interface {
 	Type() InteractionType
@@ -437,17 +415,33 @@ func (ModalSubmitInteractionData) Type() InteractionType {
 	return InteractionModalSubmit
 }
 
-// GetSelectMenu searches the modal's component tree for a SelectMenu with the given
-// custom ID. It looks inside ActionsRow and Label wrappers. Returns nil if not found.
-// Use this to retrieve selected values and resolved data from role/channel/user selects
-// embedded in a modal submit payload.
-func (d ModalSubmitInteractionData) GetSelectMenu(customID string) *SelectMenu {
-	return findSelectMenuInComponents(d.Components, customID)
+// GetSelectMenu finds and returns a SelectMenu component by its custom ID,
+// looking inside ActionsRow and Label wrappers.
+func (d ModalSubmitInteractionData) GetSelectMenu(customID string) (menu *SelectMenu) {
+	for _, comp := range d.Components {
+		switch c := comp.(type) {
+		case *ActionsRow:
+			for _, inner := range c.Components {
+				if sel, ok := inner.(*SelectMenu); ok && sel.CustomID == customID {
+					return sel
+				}
+			}
+		case *Label:
+			if sel, ok := c.Component.(*SelectMenu); ok && sel.CustomID == customID {
+				return sel
+			}
+		case *SelectMenu:
+			if c.CustomID == customID {
+				return c
+			}
+		}
+	}
+	return
 }
 
-// GetTextInput searches the modal's component tree for a TextInput with the given
-// custom ID. It looks inside ActionsRow and Label wrappers. Returns nil if not found.
-func (d ModalSubmitInteractionData) GetTextInput(customID string) *TextInput {
+// GetTextInput finds and returns a TextInput component by its custom ID,
+// looking inside ActionsRow and Label wrappers.
+func (d ModalSubmitInteractionData) GetTextInput(customID string) (input *TextInput) {
 	for _, comp := range d.Components {
 		switch c := comp.(type) {
 		case *ActionsRow:
@@ -466,7 +460,7 @@ func (d ModalSubmitInteractionData) GetTextInput(customID string) *TextInput {
 			}
 		}
 	}
-	return nil
+	return
 }
 
 // UnmarshalJSON is a helper function to correctly unmarshal Components.
